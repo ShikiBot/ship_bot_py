@@ -1,69 +1,19 @@
 import config
-import telebot
-import random
+import text
 import cd
+import db
+
 import time
-import colorama
-import enum
-import sqlite3 as sl
+import random
+import telebot
 from datetime import datetime
-from datetime import timedelta
-from colorama import Fore, Back, Style
 
 bot = telebot.TeleBot(config.token)
-con = sl.connect(config.db, check_same_thread=False)
 cooldown = config.cooldown
-colorama.init()
 chatIDs = []
 
 
 def convertTime(x): return time.strftime("%d.%m.%Y %H:%M", time.localtime(x))
-
-
-def TimestampMillisec64():
-    return int((datetime.utcnow() - datetime(1970, 1, 1)).total_seconds())
-
-
-def out_red(text):
-    print(Fore.RED + text)
-
-
-def out_green(text):
-    print(Fore.GREEN + text)
-
-
-def out_white(text):
-    print(Fore.WHITE + text)
-
-
-def out_yelow(text):
-    print(Fore.YELLOW + text)
-
-
-def get_data():
-    data = con.execute("SELECT * FROM USER").fetchall()
-    return data
-
-
-def get_count():
-    count = con.execute("SELECT COUNT(*) FROM USER").fetchone()[0]
-    return count
-
-
-def delete_data(username):
-    con.execute("DELETE FROM USER WHERE name = ?", (username,))
-    con.commit()
-
-
-def set_data(username):
-    data = get_data()
-    con.executemany('INSERT INTO USER (id, name) values(?, ?)',
-                    [(data[get_count()-1][0]+1, username)])
-    con.commit()
-
-
-def draw_data():
-    out_yelow(str(get_data()))
 
 
 def chkList(id):
@@ -74,64 +24,76 @@ def chkList(id):
     return ret
 
 
+def shipping(message):
+    chatIDs.append(cd.cooldownTime(message.chat.id, message.date))
+    users = db.get_data()
+    rnd = random.randint(0, db.get_count()-1)
+    left_dog_hand = users[rnd][1]
+    rnd = random.randint(0, db.get_count()-1)
+    right_dog_hand = users[rnd][1]
+    bot.send_message(message.chat.id, "Море волнуется раз")
+    bot.send_message(message.chat.id, "Море волнуется два")
+    bot.send_message(message.chat.id, "Море волнуется три")
+    bot.send_message(message.chat.id, "И в любовной паре замирают " +
+                     left_dog_hand + " + " + right_dog_hand + " = ♥️")
+    text.out_white(convertTime(message.date) + " | " +
+                   message.from_user.first_name + " " + message.from_user.last_name +
+                   ": " + left_dog_hand + " + " + right_dog_hand + " = <3")
+
+
 @bot.message_handler(commands=["shipper"])
 def ship(message):
     num = chkList(message.chat.id)
-    now = TimestampMillisec64()
+    now = message.date
     if num < 0:
-        chatIDs.append(cd.cooldownTime(message.chat.id, message.date))
-        users = get_data()
-        rnd = random.randint(0, get_count()-1)
-        left_dog_hand = users[rnd][1]
-        rnd = random.randint(0, get_count()-1)
-        right_dog_hand = users[rnd][1]
-        bot.send_message(message.chat.id, "Море волнуется раз")
-        bot.send_message(message.chat.id, "Море волнуется два")
-        bot.send_message(message.chat.id, "Море волнуется три")
-        bot.send_message(message.chat.id, "И в любовной паре замирают " +
-                         left_dog_hand + " + " + right_dog_hand + " = ♥️")
-        out_white(convertTime(message.date) + " | " +
-                  message.from_user.first_name + " " + message.from_user.last_name +
-                  ": " + left_dog_hand + " + " + right_dog_hand + " = <3")
+        shipping(message)
     else:
         if chatIDs[num].lastMessageTime + int(cooldown*60*60) < now:
             chatIDs.pop(num)
+            shipping(message)
 
 
 @bot.message_handler(commands=["adduser"])
 def add(message):
     if message.from_user.id == config.admin_id:
-        set_data(message.text.split(' ')[1])
+        db.set_data(message.text.split(' ')[1])
         bot.send_message(
             message.chat.id, "в БД добавлен юзер " + message.text.split(' ')[1])
-        out_green(convertTime(message.date) + " | " + message.from_user.first_name +
-                  " " + message.from_user.last_name + " add user " + message.text.split(' ')[1])
+        text.out_green(convertTime(message.date) + " | " + message.from_user.first_name +
+                       " " + message.from_user.last_name + " add user " + message.text.split(' ')[1])
 
 
 @bot.message_handler(commands=["draw"])
 def draw(message):
-    bot.send_message(message.chat.id, str(get_data()))
-    draw_data()
+    if message.from_user.id == config.admin_id:
+        bot.send_message(message.chat.id, str(db.get_data()))
+        text.draw_data()
 
 
 @bot.message_handler(commands=["cd"])
 def coold(message):
     if message.from_user.id == config.admin_id:
+        global cooldown
         cooldown = float(message.text.split(' ')[1])
-        out_yelow("cooldown changed to " + str(cooldown) + " h")
+        text.out_yelow("cooldown changed to " + str(cooldown) + " h")
         bot.send_message(message.chat.id, "кулдаун изменен")
 
 
 @bot.message_handler(commands=["rmuser"])
 def rm(message):
     if message.from_user.id == config.admin_id:
-        delete_data(message.text.split(' ')[1])
+        db.delete_data(message.text.split(' ')[1])
         bot.send_message(
             message.chat.id, "из БД удален юзер " + message.text.split(' ')[1])
-        out_red(convertTime(message.date) + " | " + message.from_user.first_name +
-                " " + message.from_user.last_name + " remove user " + message.text.split(' ')[1])
+        text.out_red(convertTime(message.date) + " | " + message.from_user.first_name +
+                     " " + message.from_user.last_name + " remove user " + message.text.split(' ')[1])
 
 
 if __name__ == '__main__':
-    out_yelow("ShipperChan online")
-    bot.polling(none_stop=True)
+    text.out_yelow("ShipperChan online")
+    while True:
+        try:
+            bot.infinity_polling(True)
+        except Exception as e:
+            text.out_red(e)
+            time.sleep(15)
